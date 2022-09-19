@@ -1,7 +1,10 @@
 const express = require("express");
 var bodyParser = require('body-parser')
-const db = require('./src/db.js') 
+const db = require('./src/db.js')
 const fileUpload = require('express-fileupload');
+const { query } = require("express");
+
+const fs = require('fs')
 
 var app = express();
 const HTTP_PORT = 8000
@@ -9,13 +12,13 @@ const HTTP_PORT = 8000
 app.use(fileUpload({
     createParentPath: true
 }));
-
+app.use(express.static('public'))
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
     extended: true
-})); 
-  
+}));
+
 
 
 app.listen(HTTP_PORT, () => {
@@ -70,6 +73,21 @@ app.delete("/event/:id", (req, res) => {
     })
 })
 
+// route /calon
+app.post('/calon', (req, res) => {
+    const { eid, sid, visi, misi } = req.body
+    const img = req.files.img
+    const filename = './public/calon/' + eid +"-"+ sid + ".png"
+    fs.writeFileSync(filename, img.data, (err) => {
+        if (err) {
+            res.status(500).json('error saving image file')
+        } 
+    })
+    console.log(eid, sid, visi, misi, filename)
+    res.status(200).json('ok')
+
+})
+
 
 // route siswa
 app.get("/siswa", (req, res) => {
@@ -79,11 +97,46 @@ app.get("/siswa", (req, res) => {
             return
         }
         res.status(200).json(row)
-    } )
+    })
 })
 
 app.post("/siswa", (req, res) => {
     // datasiswa
-    const buffer = req.files.datasiswa.data.toString()
-    const data = JSON.parse(buffer)
+    var data;
+    try {
+        const buffer = req.files.datasiswa.data.toString()
+        data = JSON.parse(buffer)
+    } catch (error) {
+        res.status(400).json({ err: error })
+        return
+    }
+
+    try {
+        data.forEach((siswa) => {
+            const query = 'INSERT INTO siswa(sid,nama,tahun,kodeakses) VALUES(?,?,?,?)'
+            db.run(query, [siswa.sid, siswa.name, siswa.tahun, siswa.kodeakses], (err, row) => {
+                if (err) {
+                    if (err.errno != 19) {
+                        throw err
+                    }
+                }
+            })
+        })
+        res.status(200).json('ok')
+    } catch (e) {
+        console.log('error' + e)
+        res.status(500).json({ err: e })
+        return
+    }
+})
+
+app.delete("/siswa/:sid", (req, res) => {
+    db.run("DELETE FROM siswa WHERE sid = ?", [req.params.sid], (err, row) => {
+        if (err) {
+            res.status(500).json({ err: err.message })
+            return
+        } else {
+            res.status(200).json('ok')
+        }
+    })
 })
