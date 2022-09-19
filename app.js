@@ -12,7 +12,7 @@ const HTTP_PORT = 8000
 app.use(fileUpload({
     createParentPath: true
 }));
-app.use(express.static('public'))
+app.use(express.static('static'))
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
@@ -77,15 +77,47 @@ app.delete("/event/:id", (req, res) => {
 app.post('/calon', (req, res) => {
     const { eid, sid, visi, misi } = req.body
     const img = req.files.img
-    const filename = './public/calon/' + eid +"-"+ sid + ".png"
-    fs.writeFileSync(filename, img.data, (err) => {
+    const filename = '/public/calon/' + eid + "-" + sid + ".png"
+    fs.writeFileSync(__dirname+filename, img.data, (err) => {
         if (err) {
             res.status(500).json('error saving image file')
         } 
     })
-    console.log(eid, sid, visi, misi, filename)
-    res.status(200).json('ok')
+    db.run("INSERT INTO calon(eid, sid, visi, misi, img) VALUES(?,?,?,?,?)", [eid, sid, visi, misi, filename], (err, row) => {
+        if (err) {
+            res.status(500).json({ err: err.message })
+            return
+        }
+        res.status(200).json('ok')
+    })
+    
+})
 
+app.patch('/calon', (req, res) => {
+    const { eid, sid, visi, misi } = req.body
+    const filename = '/public/calon/' + eid + "-" + sid + ".png"
+    if (req.files) {
+        fs.writeFileSync(__dirname+filename, req.files.img.data, (err) => {
+            if (err) {
+                res.status(500).json('error saving image file')
+            } 
+        })
+    }
+
+    db.run("UPDATE calon SET visi = ?, misi = ? where eid = ? and sid = ?"
+    [visi, misi, eid, sid],
+        (err, row) => {
+            if (err) res.status(500).json('error update db')
+            else res.status(200).json('ok')
+        }) 
+})
+
+app.get('/calon/:eid', (req, res) => {
+    const eid = req.params.eid
+    db.all("SELECT * FROM calon where eid = ?", [eid], (err, row) => {
+        if (err) res.status(400).json({ err: err.message })
+        else res.status(200).json(row)
+    })
 })
 
 
@@ -140,3 +172,4 @@ app.delete("/siswa/:sid", (req, res) => {
         }
     })
 })
+
