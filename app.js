@@ -22,16 +22,16 @@ app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
 }));
 
 var allowedOrigins = ['http://localhost:3000',
-                      'https://lurifos.dev'];app.use(cors({
-  origin: function(origin, callback){    // allow requests with no origin 
-    // (like mobile apps or curl requests)
-    if(!origin) return callback(null, true);    if(allowedOrigins.indexOf(origin) === -1){
-      var msg = 'The CORS policy for this site does not ' +
-                'allow access from the specified Origin.';
-      return callback(new Error(msg), false);
-    }    return callback(null, true);
-  }
-}));
+    'https://lurifos.dev']; app.use(cors({
+        origin: function (origin, callback) {    // allow requests with no origin 
+            // (like mobile apps or curl requests)
+            if (!origin) return callback(null, true); if (allowedOrigins.indexOf(origin) === -1) {
+                var msg = 'The CORS policy for this site does not ' +
+                    'allow access from the specified Origin.';
+                return callback(new Error(msg), false);
+            } return callback(null, true);
+        }
+    }));
 
 
 app.listen(HTTP_PORT, () => {
@@ -76,7 +76,7 @@ app.post("/event/add", (req, res) => {
     const { eid, nama, thn_pmlh, jml_pmlh } = req.body
     console.log(nama)
     const query = "INSERT INTO event( 'nama', 'thn_pmlh', 'jml_pmlh', 'npsn') VALUES(?,?,?,?)"
-    db.run(query, [ nama, thn_pmlh, jml_pmlh, req.session.npsn], (err, row) => {
+    db.run(query, [nama, thn_pmlh, jml_pmlh, req.session.npsn], (err, row) => {
         if (err) {
             res.status(500).json({ 'err': err.message })
             return
@@ -102,11 +102,11 @@ app.post('/calon', (req, res) => {
     const { eid, sid, visi, misi } = req.body
     const img = req.files.img
     const filename = '/public/calon/' + eid + "-" + sid + ".png"
-    fs.writeFileSync(__dirname+'/static/'+filename, img.data, (err) => {
+    fs.writeFileSync(__dirname + '/static/' + filename, img.data, (err) => {
         if (err) {
             res.status(500).json('error saving image file')
             console.log(err)
-        } 
+        }
     })
     db.run("INSERT INTO calon(eid, sid, visi, misi, img) VALUES(?,?,?,?,?)", [eid, sid, visi, misi, filename], (err, row) => {
         if (err) {
@@ -121,12 +121,12 @@ app.post('/calon', (req, res) => {
 app.patch('/calon', (req, res) => {
     const { eid, sid, visi, misi } = req.body
     const filename = '/public/calon/' + eid + "-" + sid + ".png"
-    
+
     if (req.files) {
-        fs.writeFileSync(__dirname+filename, req.files.img.data, (err) => {
+        fs.writeFileSync(__dirname + filename, req.files.img.data, (err) => {
             if (err) {
                 res.status(500).json('error saving image file')
-            } 
+            }
         })
     }
 
@@ -135,7 +135,7 @@ app.patch('/calon', (req, res) => {
         (err, row) => {
             if (err) res.status(500).json('error update db')
             else res.status(200).json('ok')
-        }) 
+        })
 })
 
 app.get('/calon/:eid', (req, res) => {
@@ -202,9 +202,26 @@ app.delete("/siswa/:sid", (req, res) => {
 
 // route vote
 app.post('/vote', (req, res) => {
-    const { sidc } = req.body
+    const { sidc } = req.body // sid calon
     const { eid, sid } = req.session
-    console.log(req.session)
+
+    // cek apakah siswa merupakan siswa pada sekolah yang sama dengan event
+    db.get("SELECT npsn FROM event WHERE eid = ?", [eid], (err, row) => {
+        console.log(row)
+        if (err) {
+            res.status(500).json({ err: err.message })
+            return
+        }
+        if (row.npsn != req.session.npsn) {
+            res.status(400).json({ err: 'siswa tidak terdaftar pada sekolah ini' })
+            return
+        }
+    })
+
+    if (res.headersSent) {
+        return
+    }
+
     // event id, siswa id, siswa id calon
     db.run("INSERT INTO pmlh_event(eid, sid) VALUES(?,?)", [eid, sid], (err, row) => {
         if (err) res.status(500).json({ 'err': err.message })
@@ -231,11 +248,11 @@ app.get('/vote/calon', (req, res) => {
 app.get('/vote/logout', (req, res) => {
     req.session.destroy(err => {
         if (err) {
-          res.status(400).send('Unable to log out')
+            res.status(400).send('Unable to log out')
         } else {
-          res.send('Logout successful')
+            res.send('Logout successful')
         }
-      });
+    });
 })
 
 app.post('/vote/login', (req, res) => {
@@ -244,33 +261,44 @@ app.post('/vote/login', (req, res) => {
     if (nomor_induk && kode_akses) {
         db.get('SELECT * FROM pmlh_event WHERE sid = ? AND eid = ?', [nomor_induk, eid], (err, row) => {
             if (err) res.status(500).json({ 'err': err.message })
-            else  if (row){
-                res.status(403).json({"err": "Anda sudah melakukan voting pada pemilihan ini"})
+            else if (row) {
+                res.status(403).json({ "err": "Anda sudah melakukan voting pada pemilihan ini" })
             } else {
                 if (nomor_induk && kode_akses) {
                     db.get('SELECT * FROM siswa WHERE sid = ? AND kodeakses = ?', [nomor_induk, kode_akses], (err, row) => {
                         if (err) res.status(500).json({ 'err': err.message })
-                        else  if (row){
-                            req.session.loggedin = true;
-                            req.session.username = nomor_induk
-                            req.session.sid = nomor_induk
-                            req.session.eid = eid
-                            req.session.npsn = row.npsn
-                            res.status(200).json('ok')
+                        else if (row) {
+                            // cek apakah siswa terdaftar pada sekolah ini
+                            db.get("SELECT npsn FROM event WHERE eid = ?", [eid], (err, row) => {
+                                if (err) {
+                                    res.status(500).json({ err: err.message })
+                                    return
+                                }
+                                else if (row.npsn != req.session.npsn) {
+                                    res.status(400).json({ err: 'siswa tidak terdaftar pada sekolah ini' })
+                                    return
+                                }
+                                else {
+                                    req.session.eid = eid
+                                    req.session.sid = nomor_induk
+                                    req.session.npsn = row.npsn
+                                    res.status(200).json('ok')
+                                }
+                            })
                         } else {
-                            res.status(400).json({err: 'invalid username and/or password'})
+                            res.status(400).json({ err: 'invalid username and/or password' })
                         }
                     })
                 } else {
-                    res.status(400).json({err: 'invalid username and/or password'})
+                    res.status(400).json({ err: 'invalid username and/or password' })
                 }
             }
         })
     } else {
-        res.status(400).json({err: 'bad request'})
+        res.status(400).json({ err: 'bad request' })
     }
 
-    
+
 })
 
 
@@ -283,21 +311,21 @@ app.post('/vote/login', (req, res) => {
 app.post('/auth/login', (req, res) => {
     console.log('/auth/login')
     const { username, hashpass } = req.body
-    
+
     if (username && hashpass) {
         db.get('SELECT * FROM user WHERE username = ? AND password = ?', [username, hashpass], (err, row) => {
             if (err) res.status(500).json({ 'err': err.message })
-            else  if (row){
+            else if (row) {
                 req.session.loggedin = true;
                 req.session.username = username
                 req.session.npsn = row.npsn
                 res.status(200).json('ok')
             } else {
-                res.status(400).json({err: 'invalid username and/or password'})
+                res.status(400).json({ err: 'invalid username and/or password' })
             }
         })
     } else {
-        res.status(400).json({err: 'invalid username and/or password'})
+        res.status(400).json({ err: 'invalid username and/or password' })
     }
 })
 
